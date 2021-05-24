@@ -2,6 +2,7 @@
 # pylint: disable=I0011,R0913
 
 import asyncio
+import sys
 import logging
 import socket
 from .transport import Server

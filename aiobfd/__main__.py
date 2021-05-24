@@ -4,8 +4,10 @@ import argparse
 import socket
 import logging
 import logging.handlers
+import json_log_formatter
 import sys
 import aiobfd
+from prometheus_client import start_http_server
 
 _LOG_LEVELS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
@@ -15,7 +17,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(
         description='Maintain a BFD session with a remote system')
     parser.add_argument('local', help='Local IP address or hostname')
-    parser.add_argument('remote', help='Remote IP address or hostname')
+    parser.add_argument('remote', nargs='+', help='Remote IP address or hostname')
     family_group = parser.add_mutually_exclusive_group()
     family_group.add_argument('-4', '--ipv4', action='store_const',
                               dest='family', default=socket.AF_UNSPEC,
@@ -50,12 +52,20 @@ def parse_arguments():
 
 
 def main():
+    """start prometeus client"""
+    start_http_server(9000)
+
     """Run aiobfd"""
     args = parse_arguments()
     handlers = []
 
+    if not args.no_log_to_stdout:
+        _handler = logging.StreamHandler(sys.stdout)
+        _formatter = json_log_formatter.JSONFormatter()
+        _handler.setFormatter(_formatter)
+        handlers.append(_handler)
     if (args.log_to_file or args.log_to_syslog) and not args.no_log_to_stdout:
-        handlers.append(logging.StreamHandler(sys.stdout))
+        handlers.append(logging.handlers.WatchedFileHandler(sys.stdout))
     if args.log_to_file:
         handlers.append(logging.handlers.WatchedFileHandler(args.log_file))
     if args.log_to_syslog:
@@ -64,12 +74,14 @@ def main():
     log_format = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
     logging.basicConfig(handlers=handlers, format=log_format,
                         level=logging.getLevelName(args.log_level))
-    control = aiobfd.Control(args.local, [args.remote], family=args.family,
+    control = aiobfd.Control(args.local, args.remote, family=args.family,
                              passive=args.passive,
                              rx_interval=args.rx_interval*1000,
                              tx_interval=args.tx_interval*1000,
                              detect_mult=args.detect_mult)
     control.run()
 
+
 if __name__ == '__main__':
+    start_http_server(9000)
     main()

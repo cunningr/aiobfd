@@ -9,6 +9,7 @@ import socket
 import time
 import logging
 import bitstring
+from .metrics import rx_count, tx_count, bfd_state
 from .transport import Client
 from .packet import PACKET_FORMAT, PACKET_DEBUG_MSG
 log = logging.getLogger(__name__)  # pylint: disable=I0011,C0103
@@ -61,7 +62,7 @@ class Session:
         self.tx_interval = tx_interval  # User selectable value
 
         # As per 6.8.1. State Variables
-        self.state = STATE_DOWN
+        self.state = self.set_bfd_session_state(STATE_DOWN)
         self.remote_state = STATE_DOWN
         self.local_discr = random.randint(0, 4294967295)  # 32-bit value
         self.remote_discr = 0
@@ -110,6 +111,11 @@ class Session:
         # Schedule the coroutines to transmit packets and detect failures
         self._tx_packets = asyncio.ensure_future(self.async_tx_packets())
         asyncio.ensure_future(self.detect_async_failure())
+
+    # Create a self.state setter so that it can be decorated with Prometheus metric
+    @bfd_state
+    def set_bfd_session_state(self, value):
+        return value
 
     # The transmit interval MUST be recalculated whenever
     # bfd.DesiredMinTxInterval changes, or whenever bfd.RemoteMinRxInterval
@@ -279,6 +285,7 @@ class Session:
 
         return bitstring.pack(PACKET_FORMAT, **data).bytes
 
+    @tx_count
     def tx_packet(self, final=False):
         """Transmit a single BFD packet to the remote peer"""
         log.debug('Transmitting BFD packet to %s:%s',
@@ -332,6 +339,7 @@ class Session:
         log.info('Restarting tx_packets()  ...')
         self._tx_packets = asyncio.ensure_future(self.async_tx_packets())
 
+    @rx_count
     def rx_packet(self, packet):  # pylint: disable=I0011,R0912,R0915
         """Receive packet"""
 
@@ -377,31 +385,31 @@ class Session:
         if packet.state == STATE_ADMIN_DOWN:
             if self.state != STATE_DOWN:
                 self.local_diag = DIAG_NEIGHBOR_SIGNAL_DOWN
-                self.state = STATE_DOWN
+                self.state = self.set_bfd_session_state(STATE_DOWN)
                 self.desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
                 log.error('BFD remote %s signaled going ADMIN_DOWN.',
                           self.remote)
         else:
             if self.state == STATE_DOWN:
                 if packet.state == STATE_DOWN:
-                    self.state = STATE_INIT
+                    self.state = self.set_bfd_session_state(STATE_INIT)
                     log.error('BFD session with %s going to INIT state.',
                               self.remote)
                 elif packet.state == STATE_INIT:
-                    self.state = STATE_UP
+                    self.state = self.set_bfd_session_state(STATE_UP)
                     self.desired_min_tx_interval = self.tx_interval
                     log.error('BFD session with %s going to UP state.',
                               self.remote)
             elif self.state == STATE_INIT:
                 if packet.state in (STATE_INIT, STATE_UP):
-                    self.state = STATE_UP
+                    self.state = self.set_bfd_session_state(STATE_UP)
                     self.desired_min_tx_interval = self.tx_interval
                     log.error('BFD session with %s going to UP state.',
                               self.remote)
             else:
                 if packet.state == STATE_DOWN:
                     self.local_diag = DIAG_NEIGHBOR_SIGNAL_DOWN
-                    self.state = STATE_DOWN
+                    self.state = self.set_bfd_session_state(STATE_DOWN)
                     log.error('BFD remote %s signaled going DOWN.',
                               self.remote)
 
@@ -449,7 +457,7 @@ class Session:
                 if self.state in (STATE_INIT, STATE_UP) and \
                     ((time.time() - self.last_rx_packet_time) >
                      (self._async_detect_time/1000000)):
-                    self.state = STATE_DOWN
+                    self.state = self.set_bfd_session_state(STATE_DOWN)
                     self.local_diag = DIAG_CONTROL_DETECTION_EXPIRED
                     self.desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
                     log.critical('Detected BFD remote %s going DOWN!',
