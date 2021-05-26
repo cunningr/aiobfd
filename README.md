@@ -1,3 +1,13 @@
+FORKED FROM: [netedgeplus/aiobfd](https://github.com/netedgeplus/aiobfd)
+
+Modifications:
+
+ * Added JSON logging format
+ * Added prometheus metrics
+    * BFD packets Tx/Rx
+    * BFD session state
+ * modified args to allow list of remote session IP
+
 aiobfd: Asynchronous BFD Daemon
 =================
 Bidirectional Forwarding Detection Daemon written in Python, using [AsyncIO](https://www.python.org/dev/peps/pep-3156/). This package enables you to run the BFD protocol between the host and a neighbouring device, often a router.

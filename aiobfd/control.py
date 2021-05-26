@@ -2,7 +2,7 @@
 # pylint: disable=I0011,R0913
 
 import asyncio
-import sys
+from .metrics import client_config
 import logging
 import socket
 from .transport import Server
@@ -19,6 +19,10 @@ class Control:
     def __init__(self, local, remotes, family=socket.AF_UNSPEC, passive=False,
                  tx_interval=1000000, rx_interval=1000000, detect_mult=3,
                  loop=asyncio.get_event_loop()):
+
+        # Send client config to metrics
+        client_config(local, remotes, tx_interval, rx_interval, detect_mult)
+
         self.loop = loop
         self.rx_queue = asyncio.Queue()
 

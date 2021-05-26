@@ -9,7 +9,7 @@ import socket
 import time
 import logging
 import bitstring
-from .metrics import rx_count, tx_count, bfd_state
+from .metrics import rx_count, tx_count, bfd_state, client_config
 from .transport import Client
 from .packet import PACKET_FORMAT, PACKET_DEBUG_MSG
 log = logging.getLogger(__name__)  # pylint: disable=I0011,C0103
